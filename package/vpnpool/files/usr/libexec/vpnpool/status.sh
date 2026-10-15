@@ -9,16 +9,27 @@
 # `uci get | tr ' ' '\n'` split multi-word tags into garbage — config_list_foreach
 # hands us each item whole.
 __ULJ=""
-__ulj_add() { __ULJ="${__ULJ}${1}
-"; }
+__ulj_add() {
+	local item
+	item=$(jq -Rn --arg value "$1" '$value' 2>/dev/null) || return 1
+	[ "$item" = '""' ] && return 0
+	__ULJ="${__ULJ}${item},"
+}
 uci_list_json() {   # $1=section $2=option -> JSON array on stdout
 	__ULJ=""
 	config_load vpnpool 2>/dev/null
 	config_list_foreach "$1" "$2" __ulj_add 2>/dev/null
-	printf '%s' "$__ULJ" | jq -R . | jq -s 'map(select(length>0))' 2>/dev/null
+	printf '[%s]\n' "${__ULJ%,}"
 }
 
-ENABLED=$(uci -q get vpnpool.main.enabled); [ -n "$ENABLED" ] || ENABLED=0
+# Convert hand-edited UCI booleans to strict JSON-compatible 0/1 values.
+uci_bool_json() {
+	local value="$1"
+	[ -n "$value" ] || value="$2"
+	case "$value" in 1|true|yes|on) printf '1' ;; *) printf '0' ;; esac
+}
+
+ENABLED=$(uci_bool_json "$(uci -q get vpnpool.main.enabled)" 0)
 RUNNING=false; pgrep -f '/usr/libexec/vpnpool/vpnpoold' >/dev/null 2>&1 && RUNNING=true
 ROUTING=false; nft list table inet vpnpool >/dev/null 2>&1 && ROUTING=true
 CLASH=$(uci -q get vpnpool.main.clash_api); [ -n "$CLASH" ] || CLASH=127.0.0.1:9091
@@ -172,15 +183,22 @@ COMMUNITIES=$(uci -q get vpnpool.routing.community | tr ' ' '\n' | jq -R . | jq 
 [ -n "$COMMUNITIES" ] || COMMUNITIES='[]'
 FI=$(uci -q get vpnpool.main.failover_interval); [ -n "$FI" ] || FI=60
 SI=$(uci -q get vpnpool.main.subscription_interval); [ -n "$SI" ] || SI=6h
+HAPP_ENABLED=$(uci_bool_json "$(uci -q get vpnpool.main.happ_preset_enabled)" 0)
+HAPP_HWID=$(uci -q get vpnpool.main.happ_hwid); [ -n "$HAPP_HWID" ] || HAPP_HWID=d557890a98d45a4f0fbecd88c34e3d79
+HAPP_MODEL=$(uci -q get vpnpool.main.happ_device_model); [ -n "$HAPP_MODEL" ] || HAPP_MODEL='Pixel 8 Pro'
+HAPP_OS=$(uci -q get vpnpool.main.happ_device_os); [ -n "$HAPP_OS" ] || HAPP_OS=Android
+HAPP_LOCALE=$(uci -q get vpnpool.main.happ_device_locale); [ -n "$HAPP_LOCALE" ] || HAPP_LOCALE=ru
+HAPP_VER_OS=$(uci -q get vpnpool.main.happ_ver_os); [ -n "$HAPP_VER_OS" ] || HAPP_VER_OS=15
+CUSTOM_HEADERS=$(uci_list_json main custom_headers); [ -n "$CUSTOM_HEADERS" ] || CUSTOM_HEADERS='[]'
 TOL=$(uci -q get vpnpool.main.failover_tolerance); [ -n "$TOL" ] || TOL=50
-ASW=$(uci -q get vpnpool.main.auto_switch); [ -n "$ASW" ] || ASW=1
-TGE=$(uci -q get vpnpool.main.telegram_enabled); [ -n "$TGE" ] || TGE=0
+ASW=$(uci_bool_json "$(uci -q get vpnpool.main.auto_switch)" 1)
+TGE=$(uci_bool_json "$(uci -q get vpnpool.main.telegram_enabled)" 0)
 TGT=$(uci -q get vpnpool.main.telegram_token)
 TGC=$(uci -q get vpnpool.main.telegram_chat)
-TGCTL=$(uci -q get vpnpool.main.telegram_control); [ -n "$TGCTL" ] || TGCTL=0
-TGVP=$(uci -q get vpnpool.main.telegram_via_proxy); [ -n "$TGVP" ] || TGVP=1
-KSW=$(uci -q get vpnpool.main.killswitch); [ -n "$KSW" ] || KSW=0
-DNSP=$(uci -q get vpnpool.main.dns_protect); [ -n "$DNSP" ] || DNSP=0
+TGCTL=$(uci_bool_json "$(uci -q get vpnpool.main.telegram_control)" 0)
+TGVP=$(uci_bool_json "$(uci -q get vpnpool.main.telegram_via_proxy)" 1)
+KSW=$(uci_bool_json "$(uci -q get vpnpool.main.killswitch)" 0)
+DNSP=$(uci_bool_json "$(uci -q get vpnpool.main.dns_protect)" 0)
 PREF=$(uci -q get vpnpool.main.preferred_node)
 # Hard manual pick (set by "Use"). Empty = auto/urltest mode — a preferred soft-pin
 # leaves this empty, so the dashboard can tell "auto biased to a node" from a real
@@ -194,8 +212,8 @@ CLIENTS=$(uci -q get vpnpool.main.client | tr ' ' '\n' | jq -R . | jq -s 'map(se
 CLDEV=$(uci -q get vpnpool.main.client_dev | tr ' ' '\n' | jq -R . | jq -s 'map(select(length>0))' 2>/dev/null)
 [ -n "$CLDEV" ] || CLDEV='[]'
 ANTIDPI=$(uci -q get vpnpool.main.antidpi); case "$ANTIDPI" in 1) ANTIDPI=on ;; on|off|aggressive) ;; *) ANTIDPI=off ;; esac
-ADAPT=$(uci -q get vpnpool.main.adaptive_routing); [ -n "$ADAPT" ] || ADAPT=0
-DEADF=$(uci -q get vpnpool.main.dead_filter); [ -n "$DEADF" ] || DEADF=1
+ADAPT=$(uci_bool_json "$(uci -q get vpnpool.main.adaptive_routing)" 0)
+DEADF=$(uci_bool_json "$(uci -q get vpnpool.main.dead_filter)" 1)
 DFSTR=$(uci -q get vpnpool.main.dead_filter_strikes); case "$DFSTR" in (*[!0-9]*|"") DFSTR=3 ;; esac
 DFTRY=$(uci -q get vpnpool.main.dead_filter_tries); case "$DFTRY" in (*[!0-9]*|"") DFTRY=3 ;; esac
 # Service-accuracy check targets (raw uci string; the UI shows one per line).
@@ -204,9 +222,9 @@ CHKSVC=$(uci -q get vpnpool.main.check_services)
 DEADTAGS=$(cat /tmp/vpnpool/.dead_tags.json 2>/dev/null); case "$DEADTAGS" in (\[*) : ;; (*) DEADTAGS='[]' ;; esac
 # Tags the user force-kept in auto (manual override of the dead-filter).
 KEPT=$(uci_list_json main keep_auto); [ -n "$KEPT" ] || KEPT='[]'
-ASNAP=$(uci -q get vpnpool.main.auto_snapshot); [ -n "$ASNAP" ] || ASNAP=0
+ASNAP=$(uci_bool_json "$(uci -q get vpnpool.main.auto_snapshot)" 0)
 ASNAPMAX=$(uci -q get vpnpool.main.auto_snapshot_max); case "$ASNAPMAX" in (*[!0-9]*|"") ASNAPMAX=20 ;; esac
-SCHED_EN=$(uci -q get vpnpool.main.sched_enabled); [ -n "$SCHED_EN" ] || SCHED_EN=0
+SCHED_EN=$(uci_bool_json "$(uci -q get vpnpool.main.sched_enabled)" 0)
 SCHED_ON=$(uci -q get vpnpool.main.sched_on)
 SCHED_OFF=$(uci -q get vpnpool.main.sched_off)
 SCHED_REF=$(uci -q get vpnpool.main.sched_refresh)
@@ -244,6 +262,13 @@ jq -n \
 	--argjson communities "$COMMUNITIES" \
 	--arg fi "$FI" \
 	--arg si "$SI" \
+	--argjson happ_enabled "${HAPP_ENABLED:-0}" \
+	--arg happ_hwid "$HAPP_HWID" \
+	--arg happ_model "$HAPP_MODEL" \
+	--arg happ_os "$HAPP_OS" \
+	--arg happ_locale "$HAPP_LOCALE" \
+	--arg happ_ver_os "$HAPP_VER_OS" \
+	--argjson custom_headers "$CUSTOM_HEADERS" \
 	--arg tol "$TOL" \
 	--argjson asw "${ASW:-1}" \
 	--argjson tge "${TGE:-0}" \
@@ -298,6 +323,13 @@ jq -n \
 		settings: {
 			failover_interval: ($fi|tonumber? // 60),
 			subscription_interval: $si,
+			happ_preset_enabled: ($happ_enabled==1),
+			happ_hwid: $happ_hwid,
+			happ_device_model: $happ_model,
+			happ_device_os: $happ_os,
+			happ_device_locale: $happ_locale,
+			happ_ver_os: $happ_ver_os,
+			custom_headers: $custom_headers,
 			failover_tolerance: ($tol|tonumber? // 50),
 			auto_switch: ($asw==1),
 			ipv6: $ipv6,

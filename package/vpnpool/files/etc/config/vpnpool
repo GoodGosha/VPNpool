@@ -6,6 +6,15 @@ config vpnpool 'main'
 	option enabled '0'
 	option mode 'selective'
 	option subscription_url ''
+	# Global HTTP headers for every subscription request. List entries use "Name: Value".
+	# Happ mode sends a stable device identity; custom_headers override preset names.
+	option happ_preset_enabled '0'
+	option happ_hwid ''
+	option happ_device_model 'Pixel 8 Pro'
+	option happ_device_os 'Android'
+	option happ_device_locale 'ru'
+	option happ_ver_os '15'
+	# list custom_headers 'X-Example: value'
 	# Extra FULL subscriptions, bulk-merged into the pool like the primary one
 	# (quota/expiry are read only from the primary). Managed via the UI.
 	# list extra_sub 'https://...'

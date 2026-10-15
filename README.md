@@ -379,6 +379,12 @@ Clash YAML subscriptions · multi-hop chains · AmneziaWG for more architectures
 
 ## 🛠️ Development
 
+### Subscription request headers
+
+On **Sources → Subscription request headers**, you can configure headers shared by the primary and extra subscriptions. The Happ preset sends `User-Agent: Happ/3.13.0` and five `X-*` headers; a blank HWID uses the fixed value `d557890a98d45a4f0fbecd88c34e3d79`. Custom headers override preset names. If a custom header set omits `User-Agent`, VPNpool uses `Happ/3.13.0`. When the preset or at least one valid custom header is active, VPNpool sends one request instead of probing `probe_ua`.
+
+To verify it, point the subscription URL at a test server you control that logs request headers, save the settings, and select **Update now**. Check the test header, Happ values, and a custom `X-Hwid` override. Repeat the update to confirm the HWID stays stable, then reboot and check that settings persist. HTTPS encrypts headers on the wire: `tcpdump` can show them only for HTTP; use server logs for HTTPS.
+
 ucode + shell + a little LuCI JS — nothing to compile. `package/` holds the two packages,
 `stand/` a Docker debug stand on a real OpenWrt rootfs, `scripts/deploy.sh` deploys to a
 router over SSH, `tools/router-smoke-test.sh` checks a live router read-only. Issues and PRs welcome.

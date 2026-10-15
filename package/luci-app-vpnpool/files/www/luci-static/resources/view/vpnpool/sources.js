@@ -23,6 +23,8 @@ var callActivateSaved   = rpc.declare({ object: 'vpnpool', method: 'activate_sav
 var callDeactivateSaved = rpc.declare({ object: 'vpnpool', method: 'deactivate_saved', params: [ 'tag' ] });
 var callUnsaveNode      = rpc.declare({ object: 'vpnpool', method: 'unsave_node',       params: [ 'tag' ] });
 var callSetOpt   = rpc.declare({ object: 'vpnpool', method: 'set_option',       params: [ 'name', 'value' ] });
+var callSetHeaders = rpc.declare({ object: 'vpnpool', method: 'set_subscription_headers',
+	params: [ 'custom_headers', 'happ_preset_enabled', 'happ_hwid', 'happ_device_model', 'happ_device_os', 'happ_device_locale', 'happ_ver_os' ] });
 var callAddExtraSub = rpc.declare({ object: 'vpnpool', method: 'add_sub',       params: [ 'url' ] });
 var callDelExtraSub = rpc.declare({ object: 'vpnpool', method: 'del_sub',       params: [ 'url' ] });
 
@@ -183,6 +185,16 @@ return view.extend({
 		rd.readAsText(f);
 	},
 	handleSaveInterval: function(inp) { return callSetOpt('subscription_interval', inp.value || '6h').then(L.bind(function() { this.notify(_('Update interval saved.')); }, this)); },
+	handleSaveHeaders: function(ta, enabled, hwid, model, os, locale, verOs) {
+		var self = this;
+		return callSetHeaders(ta.value || '', !!enabled.checked, hwid.value || '', model.value || 'Pixel 8 Pro',
+			os.value || 'Android', locale.value || 'ru', verOs.value || '15').then(function() {
+			self.notify(_('Subscription headers saved; a refresh was requested.'));
+			self.reload();
+		}).catch(function(e) {
+			ui.addNotification(null, E('p', _('Could not save subscription headers: %s').format(e)), 'error');
+		});
+	},
 	handleUpdateNow: function() { this.notify(_('Updating from all sources…')); return callRefresh(); },
 
 	// --- import flow: probe a source URL, then pick nodes -----------------------
@@ -297,6 +309,25 @@ return view.extend({
 		fileInput.addEventListener('change', L.bind(function() { this.handleImportFile(importTA, fileInput); }, this));
 		var intInput = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'style': 'width:120px',
 			'value': (st.settings && st.settings.subscription_interval) || '6h' });
+		var settings = st.settings || {};
+		var happToggle = E('input', { 'type': 'checkbox', 'checked': !!settings.happ_preset_enabled });
+		var happFields = E('div', { 'style': 'display:' + (happToggle.checked ? 'block' : 'none') + ';margin:8px 0 0 20px' });
+		function headerField(label, value, placeholder) {
+			var input = E('input', { 'type': 'text', 'class': 'cbi-input-text', 'style': 'width:220px;max-width:100%',
+				'value': value || '', 'placeholder': placeholder || '' });
+			return { node: E('label', { 'style': 'display:inline-block;margin:4px 12px 4px 0' }, [
+				E('span', { 'style': 'display:block;font-size:12px;color:#777' }, label), input
+			]), input: input };
+		}
+		var hwidField = headerField(_('HWID'), settings.happ_hwid, 'd557890a98d45a4f0fbecd88c34e3d79');
+		var modelField = headerField(_('Device model'), settings.happ_device_model || 'Pixel 8 Pro');
+		var osField = headerField(_('Device OS'), settings.happ_device_os || 'Android');
+		var localeField = headerField(_('Device locale'), settings.happ_device_locale || 'ru');
+		var verOsField = headerField(_('OS version'), settings.happ_ver_os || '15');
+		happFields.appendChild(E('div', {}, [hwidField.node, modelField.node, osField.node, localeField.node, verOsField.node]));
+		happToggle.addEventListener('change', function() { happFields.style.display = happToggle.checked ? 'block' : 'none'; });
+		var customHeaders = E('textarea', { 'class': 'cbi-input-textarea', 'style': 'width:100%;min-height:110px;font-family:monospace;font-size:12px',
+			'placeholder': 'X-Example: value\nX-Another-Header: value' }, (settings.custom_headers || []).join('\n'));
 
 		return E('div', { 'class': 'cbi-map vpnpool-view' }, [
 			i18n.header(_('VPN Pool — Sources')),
@@ -314,6 +345,21 @@ return view.extend({
 					E('button', { 'class': 'btn cbi-button cbi-button-save', 'style': 'margin-left:8px', 'click': ui.createHandlerFn(this, 'handleSaveInterval', intInput) }, _('Save')),
 					E('span', { 'style': 'color:#888;margin-left:8px' }, _('e.g. 6h, 30m, 12h'))
 				])
+			]),
+
+			E('div', { 'class': 'cbi-section' }, [
+				E('h3', {}, _('Subscription request headers')),
+				E('p', { 'style': 'color:#888' }, _('Set global HTTP headers for the main and extra subscriptions. When custom headers are set, VPNpool sends one request instead of probing User-Agents.')),
+				E('label', { 'style': 'display:flex;align-items:center;gap:8px' }, [happToggle, _('Enable Happ preset')]),
+				happFields,
+				E('div', { 'style': 'margin-top:10px' }, [
+					E('b', {}, _('Custom headers')),
+					E('p', { 'style': 'color:#888;margin:2px 0 6px' }, _('One header per line, in Name: Value format. Custom names override the Happ preset.')),
+					customHeaders
+				]),
+				E('button', { 'class': 'btn cbi-button cbi-button-save', 'style': 'margin-top:8px',
+					'click': ui.createHandlerFn(this, 'handleSaveHeaders', customHeaders, happToggle,
+						hwidField.input, modelField.input, osField.input, localeField.input, verOsField.input) }, _('Save headers'))
 			]),
 
 			E('div', { 'class': 'cbi-section' }, [

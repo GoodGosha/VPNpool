@@ -79,7 +79,7 @@ _delete_one_tag() {   # $1=tag
 case "$1" in
 list)
 	cat <<'L'
-{ "status": {}, "diag": {}, "conntest": {}, "leases": {}, "export": {}, "import": { "config": "x" }, "set_enabled": { "enabled": true }, "select": { "tag": "x" }, "refresh": {}, "ping": {}, "set_url": { "url": "x" }, "del_subscription": {}, "add_source": { "url": "x" }, "del_source": { "url": "x" }, "add_node": { "link": "x" }, "del_node": { "link": "x" }, "import_nodes": { "text": "x" }, "delete_node": { "tag": "x" }, "delete_nodes": { "tags": [] }, "restore_node": { "tag": "x" }, "refilter_node": { "tag": "x" }, "save_node": { "tag": "x" }, "unsave_node": { "tag": "x" }, "activate_saved": { "tag": "x" }, "deactivate_saved": { "tag": "x" }, "node_link": { "tag": "x" }, "export_nodes": { "scope": "x" }, "add_sub": { "url": "x" }, "del_sub": { "url": "x" }, "unlock": { "tag": "x" }, "unlock_result": {}, "add_auto_domain": { "domain": "x" }, "del_auto_domain": { "domain": "x" }, "run_adaptive": {}, "set_domains": { "domains": [] }, "set_communities": { "communities": [] }, "set_option": { "name": "x", "value": "y" }, "set_clients": { "mode": "all", "clients": [], "devices": [] }, "set_auto_members": { "members": [] }, "set_preferred": { "tag": "x" }, "set_schedule": { "enabled": true, "on": "x", "off": "x", "refresh": "x" }, "speedtest": { "tag": "x" }, "speedtest_result": {}, "probe_source": { "url": "x" }, "probe_result": {}, "import_select": { "url": "x", "idx": [] }, "tg_test": {} }
+{ "status": {}, "diag": {}, "conntest": {}, "leases": {}, "export": {}, "import": { "config": "x" }, "set_enabled": { "enabled": true }, "select": { "tag": "x" }, "refresh": {}, "ping": {}, "set_url": { "url": "x" }, "del_subscription": {}, "add_source": { "url": "x" }, "del_source": { "url": "x" }, "add_node": { "link": "x" }, "del_node": { "link": "x" }, "import_nodes": { "text": "x" }, "delete_node": { "tag": "x" }, "delete_nodes": { "tags": [] }, "restore_node": { "tag": "x" }, "refilter_node": { "tag": "x" }, "save_node": { "tag": "x" }, "unsave_node": { "tag": "x" }, "activate_saved": { "tag": "x" }, "deactivate_saved": { "tag": "x" }, "node_link": { "tag": "x" }, "export_nodes": { "scope": "x" }, "add_sub": { "url": "x" }, "del_sub": { "url": "x" }, "unlock": { "tag": "x" }, "unlock_result": {}, "add_auto_domain": { "domain": "x" }, "del_auto_domain": { "domain": "x" }, "run_adaptive": {}, "set_domains": { "domains": [] }, "set_communities": { "communities": [] }, "set_option": { "name": "x", "value": "y" }, "set_subscription_headers": { "custom_headers": "", "happ_preset_enabled": false, "happ_hwid": "", "happ_device_model": "", "happ_device_os": "", "happ_device_locale": "", "happ_ver_os": "" }, "set_clients": { "mode": "all", "clients": [], "devices": [] }, "set_auto_members": { "members": [] }, "set_preferred": { "tag": "x" }, "set_schedule": { "enabled": true, "on": "x", "off": "x", "refresh": "x" }, "speedtest": { "tag": "x" }, "speedtest_result": {}, "probe_source": { "url": "x" }, "probe_result": {}, "import_select": { "url": "x", "idx": [] }, "tg_test": {} }
 L
 	;;
 call)
@@ -387,6 +387,26 @@ call)
 			echo '{"error":"unknown option"}'
 			;;
 		esac
+		;;
+	set_subscription_headers)
+		enabled=$(echo "$input" | jq -r '.happ_preset_enabled // false')
+		case "$enabled" in true|1) enabled=1 ;; *) enabled=0 ;; esac
+		uci set vpnpool.main.happ_preset_enabled="$enabled"
+		for k in happ_hwid happ_device_model happ_device_os happ_device_locale happ_ver_os; do
+			v=$(echo "$input" | jq -r --arg k "$k" '.[$k] // ""')
+			uci set vpnpool.main."$k"="$v"
+		done
+		# The textarea is stored as a UCI list so spaces in values stay intact.
+		HEADERS_FILE="/tmp/vpnpool-headers.$$"
+		echo "$input" | jq -r '.custom_headers // ""' > "$HEADERS_FILE"
+		uci -q delete vpnpool.main.custom_headers
+		while IFS= read -r header; do
+			[ -n "$header" ] && uci add_list vpnpool.main.custom_headers="$header"
+		done < "$HEADERS_FILE"
+		rm -f "$HEADERS_FILE"
+		uci commit vpnpool
+		signal_refetch
+		echo '{"ok":true}'
 		;;
 	tg_test)
 		code=$(tg_send "✅ vpnpool: test message" 2>/dev/null)
