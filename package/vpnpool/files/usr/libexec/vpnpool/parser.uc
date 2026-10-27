@@ -14,6 +14,10 @@ import { readfile, stdin } from 'fs';
 let nodes = [];
 let seen = {};
 let tagcount = {};
+// Tags reserved by generator.uc for groups (selector/urltest/direct/block).
+// A node must never take one of these names, or `sing-box check` fails with
+// "duplicate outbound/endpoint tag".
+let RESERVED_TAGS = { proxy: 1, auto: 1, direct: 1, block: 1 };
 // When true (CLI flag --keep-link), attach the original link as `_link` to each
 // node parsed from a link line. Used by probe.sh so the UI can store the exact
 // links the user picks. The live build does NOT pass the flag, so the config-bound
@@ -50,6 +54,19 @@ function add_node(ob, dedupkey) {
 	} else {
 		tagcount[base] = 1;
 		ob.tag = base;
+	}
+	// Never let a node claim a tag reserved by generator.uc for groups.
+	// Prefix with "node-" and re-uniquify so we don't create a *new* duplicate
+	// with an existing "node-..." tag from another node.
+	if (RESERVED_TAGS[ob.tag]) {
+		let renamed = 'node-' + ob.tag;
+		let n = 1;
+		while (tagcount[renamed]) {
+			n += 1;
+			renamed = 'node-' + ob.tag + ' #' + n;
+		}
+		tagcount[renamed] = 1;
+		ob.tag = renamed;
 	}
 	if (KEEP_LINK && type(dedupkey) == 'string' && index(dedupkey, '://') >= 0)
 		ob._link = dedupkey;

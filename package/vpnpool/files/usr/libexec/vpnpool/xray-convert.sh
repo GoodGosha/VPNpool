@@ -20,9 +20,13 @@ jq -r '
 	def query($pairs):
 		[$pairs[] | select(. != null) | .[0] + "=" + (.[1] | @uri)] | join("&");
 	def node_label:
-		if (.tag // "") != "" then .tag
-		elif (.profile_name // "") != "" then .profile_name
-		else .protocol + "-" + .address + ":" + (.port | tostring) end;
+		(if (.tag // "") != "" then .tag
+		 elif (.profile_name // "") != "" then .profile_name
+		 else .protocol + "-" + .address + ":" + (.port | tostring) end) as $name
+		| if ($name | ascii_downcase) as $n
+			 | ($n == "proxy" or $n == "auto" or $n == "direct" or $n == "block")
+		  then "node-" + $name
+		  else $name end;
 	def portstr: (.port | tostring);
 	def link:
 		. as $n
