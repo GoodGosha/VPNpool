@@ -157,7 +157,8 @@ uci set vpnpool.main.enabled='1'; uci commit vpnpool
 ## 🧩 Features
 
 **Subscriptions & nodes**
-- Auto-updating subscription (base64 or sing-box JSON); 9 client User-Agents tried until one returns nodes
+- Auto-updating subscription (base64, sing-box JSON, or Xray profile JSON); Xray VLESS/VMess/Trojan/Shadowsocks outbounds are converted locally
+- With no custom headers, 9 client User-Agents are tried until one returns nodes
 - Several subscriptions merged into one pool; offline cache if the panel is down
 - Manual nodes, bulk paste or `.txt` import, import from a link list with a pick-what-you-want dialog
 - ⭐ Saved nodes survive subscription expiry; optional auto-snapshot of reachable nodes
@@ -378,6 +379,12 @@ Faster active-probe failover · DNS/FakeIP with DoH-over-proxy · full IPv6 tpro
 Clash YAML subscriptions · multi-hop chains · AmneziaWG for more architectures
 
 ## 🛠️ Development
+
+### Xray JSON subscriptions
+
+Xray profile JSON is converted locally by `xray-convert.sh` into links handled by the existing parser. Supported outbounds are VLESS, VMess, Trojan, and Shadowsocks; `freedom`, `blackhole`, and `dns` are ignored. `jq` is already a package dependency, and its Base64 encoder is used so no extra Base64 package or `-w0` option is needed.
+
+Run `sh test/test-xray-converter.sh` in an environment with `jq` and `base64`. The fixture uses sanitized example credentials and reserved example hosts; it is not a captured CDNgenix response.
 
 ### Subscription request headers
 

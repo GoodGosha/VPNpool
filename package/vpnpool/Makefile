@@ -4,7 +4,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=vpnpool
 PKG_VERSION:=1.5.0
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 PKG_MAINTAINER:=roman-png
 PKG_LICENSE:=GPL-3.0-only
 PKG_LICENSE_FILES:=LICENSE
@@ -23,7 +23,7 @@ endef
 
 define Package/vpnpool/description
   vpnpool is a control plane over sing-box for OpenWrt: an auto-updating subscription
-  (base64 / sing-box JSON, multi-source, multi-client User-Agent probing) plus manual
+  (base64 / sing-box JSON / Xray profile JSON, multi-source, multi-client User-Agent probing) plus manual
   VLESS/VMess/Trojan/Shadowsocks nodes and AmneziaWG configs (.conf or an AmneziaVPN
   vpn:// link, decoded on the router; needs an AWG-capable sing-box), automatic ping
   (urltest) and failover to a working node. A node counts as working only if it opens

@@ -56,16 +56,22 @@ function add_node(ob, dedupkey) {
 	push(nodes, ob);
 }
 
+function unbracket_host(host) {
+	if (substr(host, 0, 1) == '[' && substr(host, length(host) - 1, 1) == ']')
+		return substr(host, 1, length(host) - 2);
+	return host;
+}
+
 function parse_vless(line) {
-	let m = match(line, /^vless:\/\/([^@]+)@([^:\/?#]+):([0-9]+)(\?[^#]*)?(#.*)?$/);
+	let m = match(line, /^vless:\/\/([^@]+)@(\[[A-Za-z0-9:.%_-]+\]|[^:\/?#]+):([0-9]+)(\?[^#]*)?(#.*)?$/);
 	if (!m) return null;
 
 	let p = parse_query(m[4] ? substr(m[4], 1) : '');
 	let name = m[5] ? url_decode(substr(m[5], 1)) : '';
 	let ob = {
 		type: 'vless',
-		tag: length(name) ? name : (m[2] + ':' + m[3]),
-		server: m[2],
+		tag: length(name) ? name : (unbracket_host(m[2]) + ':' + m[3]),
+		server: unbracket_host(m[2]),
 		server_port: int(m[3]),
 		uuid: m[1]
 	};
@@ -112,13 +118,13 @@ function parse_vless(line) {
 }
 
 function parse_trojan(line) {
-	let m = match(line, /^trojan:\/\/([^@]+)@([^:\/?#]+):([0-9]+)(\?[^#]*)?(#.*)?$/);
+	let m = match(line, /^trojan:\/\/([^@]+)@(\[[A-Za-z0-9:.%_-]+\]|[^:\/?#]+):([0-9]+)(\?[^#]*)?(#.*)?$/);
 	if (!m) return null;
 	let p = parse_query(m[4] ? substr(m[4], 1) : '');
 	let name = m[5] ? url_decode(substr(m[5], 1)) : '';
 	let ob = {
-		type: 'trojan', tag: length(name) ? name : (m[2] + ':' + m[3]),
-		server: m[2], server_port: int(m[3]), password: m[1]
+		type: 'trojan', tag: length(name) ? name : (unbracket_host(m[2]) + ':' + m[3]),
+		server: unbracket_host(m[2]), server_port: int(m[3]), password: url_decode(m[1])
 	};
 	let tls = { enabled: true };
 	if (length(p.sni)) tls.server_name = p.sni;
@@ -180,14 +186,14 @@ function parse_ss(line) {
 		let c = index(dec, ':'); if (c < 0) return null;
 		method = substr(dec, 0, c); password = substr(dec, c + 1);
 		let cc = rindex(hp, ':'); if (cc < 0) return null;
-		server = substr(hp, 0, cc); port = int(substr(hp, cc + 1));
+		server = unbracket_host(substr(hp, 0, cc)); port = int(substr(hp, cc + 1));
 	} else {
 		let dec = b64dec(rest);
 		if (!dec) return null;
 		let at2 = index(dec, '@'); if (at2 < 0) return null;
 		let mp = substr(dec, 0, at2), hp = substr(dec, at2 + 1);
 		let c = index(mp, ':'); method = substr(mp, 0, c); password = substr(mp, c + 1);
-		let cc = rindex(hp, ':'); server = substr(hp, 0, cc); port = int(substr(hp, cc + 1));
+		let cc = rindex(hp, ':'); server = unbracket_host(substr(hp, 0, cc)); port = int(substr(hp, cc + 1));
 	}
 	if (!length(server) || !port) return null;
 	return {

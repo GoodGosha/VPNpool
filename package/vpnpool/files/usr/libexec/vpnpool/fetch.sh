@@ -68,10 +68,37 @@ else
 	log "fetch: no configured headers; probing User-Agents"
 fi
 
+looks_xray_json() {  # $1 = candidate JSON file
+	jq -e '
+		def xray_profile:
+			(.outbounds | type) == "array"
+			and (has("dns") or has("inbounds") or has("remark") or has("remarks")
+				or has("name") or any(.outbounds[]?; has("protocol")));
+		if type == "array" then any(.[]; xray_profile)
+		else xray_profile end
+	' "$1" >/dev/null 2>&1
+}
+
+convert_xray_to_base64() {  # $1 = Xray JSON file; stdout = Base64 link list
+	/usr/libexec/vpnpool/xray-convert.sh "$1"
+}
+
 normalize() {   # $1 = raw body file -> decoded text on stdout
 	c=$(head -c 1 "$1" 2>/dev/null)
 	case "$c" in
-		'{'|'[') cat "$1" ;;                                   # JSON
+		'{'|'[')
+			if looks_xray_json "$1"; then
+				converted=$(convert_xray_to_base64 "$1" 2>/dev/null)
+				if [ -n "$converted" ]; then
+					printf '%s' "$converted"
+				else
+					log "fetch: Xray JSON detected but no nodes extracted."
+					cat "$1"
+				fi
+			else
+				cat "$1"  # sing-box JSON or an unknown JSON document
+			fi
+			;;
 		*)
 			if head -c 8 "$1" 2>/dev/null | grep -q '://'; then
 				cat "$1"                                       # plain link list
@@ -111,7 +138,7 @@ fetch_best() {   # $1=url $2=primary(0/1) $3=outfile
 				fi
 				return 1 ;;
 		esac
-		sz=$(wc -c < "$SB_DATA/b.tmp" 2>/dev/null); [ "${sz:-0}" -lt 20 ] || return 1
+		sz=$(wc -c < "$SB_DATA/b.tmp" 2>/dev/null); [ "${sz:-0}" -ge 20 ] || return 1
 		normalize "$SB_DATA/b.tmp" > "$SB_DATA/n.tmp"
 		cnt=$(ucode /usr/libexec/vpnpool/parser.uc "$SB_DATA/n.tmp" 2>/dev/null | jq 'length' 2>/dev/null)
 		[ -n "$cnt" ] || cnt=0

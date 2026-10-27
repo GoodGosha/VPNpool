@@ -1,0 +1,73 @@
+[
+  {
+    "remarks": "CDNgenix Reality example (sanitized)",
+    "dns": { "servers": ["1.1.1.1"] },
+    "inbounds": [],
+    "outbounds": [
+      {
+        "tag": "reality-vless",
+        "protocol": "vless",
+        "settings": {
+          "vnext": [
+            {
+              "address": "198.51.100.10",
+              "port": 443,
+              "users": [
+                { "id": "11111111-2222-4333-8444-555555555555", "encryption": "none", "flow": "xtls-rprx-vision" }
+              ]
+            }
+          ]
+        },
+        "streamSettings": {
+          "network": "tcp",
+          "security": "reality",
+          "realitySettings": {
+            "serverName": "front.example.invalid",
+            "publicKey": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "fingerprint": "chrome"
+          }
+        }
+      },
+      { "tag": "direct", "protocol": "freedom", "settings": {} },
+      { "tag": "block", "protocol": "blackhole", "settings": {} }
+    ]
+  },
+  {
+    "remarks": "Other protocol examples (sanitized)",
+    "outbounds": [
+      {
+        "tag": "vless-ws",
+        "protocol": "vless",
+        "settings": { "vnext": [{ "address": "node.example.invalid", "port": 443, "users": [{ "id": "66666666-7777-4888-8999-aaaaaaaaaaaa" }] }] },
+        "streamSettings": { "network": "ws", "security": "tls", "tlsSettings": { "serverName": "sni.example.invalid" }, "wsSettings": { "path": "/ws?ed=256", "headers": { "Host": "cdn.example.invalid" } } }
+      },
+      {
+        "tag": "vmess-grpc",
+        "protocol": "vmess",
+        "settings": { "vnext": [{ "address": "vmess.example.invalid", "port": 8443, "users": [{ "id": "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff", "alterId": 0, "security": "auto" }] }] },
+        "streamSettings": { "network": "grpc", "security": "tls", "tlsSettings": { "serverName": "grpc.example.invalid", "alpn": ["h2"] }, "grpcSettings": { "serviceName": "tunnel" } }
+      },
+      {
+        "tag": "trojan-ws",
+        "protocol": "trojan",
+        "settings": { "servers": [{ "address": "trojan.example.invalid", "port": 443, "password": "dummy-password" }] },
+        "streamSettings": { "network": "ws", "security": "tls", "tlsSettings": { "serverName": "trojan.example.invalid" }, "wsSettings": { "path": "/trojan", "headers": { "Host": "cdn.example.invalid" } } }
+      },
+      {
+        "tag": "ss-example",
+        "protocol": "shadowsocks",
+        "settings": { "servers": [{ "address": "ss.example.invalid", "port": 8388, "method": "chacha20-poly1305", "password": "dummy-password" }] }
+      }
+    ]
+  },
+  {
+    "remarks": "IPv6 and default transport example (sanitized)",
+    "outbounds": [
+      {
+        "tag": "vless-ipv6",
+        "protocol": "vless",
+        "settings": { "vnext": [{ "address": "2001:db8::1", "port": 443, "users": [{ "id": "12345678-1234-4234-8234-123456789abc" }] }] }
+      }
+    ]
+  }
+]
