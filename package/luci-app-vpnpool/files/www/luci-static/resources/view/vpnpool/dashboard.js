@@ -68,6 +68,16 @@ function fmtExpire(ts) {
 	var days = Math.floor((ts * 1000 - Date.now()) / 86400000);
 	return new Date(ts * 1000).toLocaleDateString() + ' (' + (days >= 0 ? days + ' ' + _('days') : _('expired')) + ')';
 }
+function fmtDate(ts) {
+	if (!ts) return '—';
+	var d = new Date(ts * 1000);
+	return ('0' + d.getDate()).slice(-2) + '.' + ('0' + (d.getMonth() + 1)).slice(-2) + '.' + d.getFullYear();
+}
+function fmtDateTime(ts) {
+	if (!ts) return '—';
+	var d = new Date(ts * 1000);
+	return fmtDate(ts) + ' ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+}
 function badge(text, color) {
 	return E('span', { 'style': 'display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;color:#fff;background:' + color + ';margin-right:6px' }, text);
 }
@@ -453,11 +463,6 @@ return view.extend({
 		}
 		prevTraffic = { time: now, down: t.down_total || 0, up: t.up_total || 0 };
 
-		// subscription expiry color
-		var exp = st.subscription && st.subscription.expire;
-		var days = exp ? Math.floor((exp * 1000 - Date.now()) / 86400000) : null;
-		var expColor = (days != null && days < 7) ? '#cc3333' : (days != null && days < 30 ? '#e08a00' : '');
-
 		var kids = [
 			E('div', { 'style': 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px' }, [
 				E('button', { 'class': 'btn cbi-button ' + (on ? 'cbi-button-negative' : 'cbi-button-positive'),
@@ -478,25 +483,42 @@ return view.extend({
 				E('span', { 'style': 'color:#888;margin-left:12px' }, _('total') + ': ↓' + fmtBytes(t.down_total) + ' ↑' + fmtBytes(t.up_total))
 			]));
 
-		kids.push(E('div', { 'style': 'margin:4px 0' }, [ E('b', {}, _('Subscription') + ': '),
-			E('span', { 'style': expColor ? ('color:' + expColor + ';font-weight:bold') : '' }, _('expires %s').format(fmtExpire(exp))),
-			E('button', { 'class': 'btn cbi-button cbi-button-action', 'style': 'margin-left:10px',
-				'click': ui.createHandlerFn(this, 'handleRefresh') }, _('Update now')) ]));
-
-		var sub = st.subscription || {};
-		if (sub.total && sub.total > 0) {
-			var qused = sub.used || 0;
-			var qpct = Math.min(100, Math.round(qused * 100 / sub.total));
-			var qleft = Math.max(0, sub.total - qused);
-			var qcolor = qpct >= 90 ? '#cc3333' : (qpct >= 75 ? '#e08a00' : '#2e7d32');
-			kids.push(E('div', { 'style': 'margin:4px 0' }, [
-				E('b', {}, _('Data quota') + ': '),
-				E('span', {}, fmtBytes(qused) + ' / ' + fmtBytes(sub.total) + '  (' + _('%s left').format(fmtBytes(qleft)) + ')'),
-				E('div', { 'style': 'margin-top:3px;background:#e0e0e0;border-radius:6px;height:10px;width:280px;overflow:hidden' }, [
-					E('div', { 'style': 'height:10px;width:' + qpct + '%;background:' + qcolor }, '')
-				])
-			]));
+		kids.push(E('div', { 'style': 'display:flex;align-items:center;gap:10px;margin:8px 0 5px' }, [
+			E('b', {}, _('Subscriptions')),
+			E('button', { 'class': 'btn cbi-button cbi-button-action',
+				'click': ui.createHandlerFn(this, 'handleRefresh') }, _('Update now'))
+		]));
+		var subscriptions = Array.isArray(st.subscriptions) ? st.subscriptions : null;
+		if (!subscriptions) {
+			var legacy = st.subscription || {};
+			subscriptions = [ { id: 'main', label: _('Main subscription'), url: legacy.url,
+				expire: legacy.expire, used: legacy.used || 0, total: legacy.total || 0, updated: 0 } ];
 		}
+		subscriptions.forEach(function(sub, index) {
+			var exp = sub.expire, expired = exp && exp * 1000 <= Date.now();
+			var used = Number(sub.used) || 0, total = Number(sub.total) || 0;
+			var pct = total > 0 ? Math.min(100, Math.round(used * 100 / total)) : 0;
+			var color = expired ? '#cc3333' : (pct >= 90 ? '#cc3333' : (pct >= 75 ? '#e08a00' : '#2e7d32'));
+			var domain = (sub.url || '').replace(/^[a-z]+:\/\//i, '').split('/')[0].split('@').pop();
+			var label = sub.label || (index === 0 ? _('Main subscription') : _('Additional subscription #%d').format(index));
+			if (sub.id === 'main') label = _('Main subscription');
+			else if (sub.id && sub.id.indexOf('extra_') === 0) {
+				var extraIndex = parseInt(sub.id.substring(6), 10);
+				if (isFinite(extraIndex)) label = _('Additional subscription #%d').format(extraIndex + 1);
+			}
+			var lines = [
+				E('div', {}, [ E('b', {}, label), domain ? E('span', { 'style': 'color:#777;margin-left:8px;word-break:break-all' }, domain) : '' ]),
+				E('div', { 'style': 'margin-top:4px' }, [ E('span', {}, _('Expiry') + ': '),
+					E('span', { 'style': expired ? 'color:#cc3333;font-weight:bold' : '' }, exp ? fmtDate(exp) + (expired ? ' · ' + _('expired') : '') : '—') ]),
+				E('div', { 'style': 'margin-top:4px' }, [ E('span', {}, _('Data quota') + ': '),
+					total > 0 ? (fmtBytes(used) + ' / ' + fmtBytes(total)) : '—' ]),
+				total > 0 ? E('div', { 'style': 'margin-top:3px;background:#e0e0e0;border-radius:6px;height:8px;max-width:360px;overflow:hidden' }, [
+					E('div', { 'style': 'height:8px;width:' + pct + '%;background:' + color }, '')
+				]) : '',
+				E('div', { 'style': 'margin-top:4px;color:#777;font-size:12px' }, _('Updated') + ': ' + fmtDateTime(sub.updated))
+			];
+			kids.push(E('div', { 'style': 'border:1px solid #ddd;border-radius:6px;padding:8px 10px;margin:4px 0' }, lines));
+		});
 
 		return E('div', {}, kids);
 	},
@@ -576,8 +598,24 @@ return view.extend({
 		var poolLabel = poolAll ? _('all nodes') : (members.length + ' / ' + allNodes.length);
 		var NCOL = '7';
 
+		var nodeCheckboxes = [];
+		var selectAll = E('input', { 'type': 'checkbox', 'title': _('Select all') });
+		var syncSelectAll = function() {
+			var checked = nodeCheckboxes.filter(function(cb) { return cb.checked; }).length;
+			selectAll.checked = nodeCheckboxes.length > 0 && checked === nodeCheckboxes.length;
+			selectAll.indeterminate = checked > 0 && checked < nodeCheckboxes.length;
+		};
+		selectAll.addEventListener('change', function() {
+			nodeCheckboxes.forEach(function(cb) {
+				cb.checked = selectAll.checked;
+				var tag = cb.getAttribute('data-node-tag');
+				if (cb.checked) nodeSel[tag] = true; else delete nodeSel[tag];
+			});
+			selectAll.indeterminate = false;
+			this.updateSelCount();
+		}.bind(this));
 		var header = E('tr', { 'class': 'tr table-titles' }, [
-			E('th', { 'class': 'th' }, ''), E('th', { 'class': 'th' }, _('Node')),
+			E('th', { 'class': 'th' }, selectAll), E('th', { 'class': 'th' }, _('Node')),
 			E('th', { 'class': 'th' }, _('Server')), E('th', { 'class': 'th' }, _('Ping')),
 			E('th', { 'class': 'th' }, _('Speed')), E('th', { 'class': 'th' }, _('Traffic')),
 			E('th', { 'class': 'th' }, _('Actions'))
@@ -602,8 +640,9 @@ return view.extend({
 			var pooled = inPool(n.tag);
 			var sp = speedResults[n.tag];
 			var traf = ((n.down || 0) + (n.up || 0)) > 0 ? ('↓' + fmtBytes(n.down) + ' ↑' + fmtBytes(n.up)) : '—';
-			var cb = E('input', { 'type': 'checkbox', 'checked': nodeSel[n.tag] ? 'checked' : null, 'title': _('Select for bulk actions') });
-			cb.addEventListener('change', function() { if (cb.checked) nodeSel[n.tag] = true; else delete nodeSel[n.tag]; view.updateSelCount(); });
+			var cb = E('input', { 'type': 'checkbox', 'checked': nodeSel[n.tag] ? 'checked' : null, 'data-node-tag': n.tag, 'title': _('Select for bulk actions') });
+			nodeCheckboxes.push(cb);
+			cb.addEventListener('change', function() { if (cb.checked) nodeSel[n.tag] = true; else delete nodeSel[n.tag]; view.updateSelCount(); syncSelectAll(); });
 			return E('tr', { 'class': 'tr', 'style': act ? 'background:rgba(46,125,50,.12)' : (pooled ? '' : 'opacity:.55') }, [
 				E('td', { 'class': 'td' }, cb),
 				E('td', { 'class': 'td' }, [
@@ -655,6 +694,7 @@ return view.extend({
 		});
 		// vp-table -> responsive: on phones the rows reflow into wrapping cards (see
 		// the @media rule injected by i18n) so nothing is clipped or scrolled sideways.
+		syncSelectAll();
 		return E('table', { 'class': 'table vp-table' }, [ header, autoRow ].concat(bodyRows));
 	},
 

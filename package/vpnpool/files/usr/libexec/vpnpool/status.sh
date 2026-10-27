@@ -177,6 +177,29 @@ SOURCES=$(uci -q get vpnpool.main.source | tr ' ' '\n' | jq -R . | jq -s 'map(se
 [ -n "$SOURCES" ] || SOURCES='[]'
 EXTRASUBS=$(uci -q get vpnpool.main.extra_sub | tr ' ' '\n' | jq -R . | jq -s 'map(select(length>0))' 2>/dev/null)
 [ -n "$EXTRASUBS" ] || EXTRASUBS='[]'
+# Per-subscription metadata is written by fetch.sh as /etc/vpnpool/sub.<id>.info.
+# Build the response from the currently configured URLs so removed subscriptions do
+# not linger in the dashboard; absent/corrupt metadata gets safe empty values.
+SUBSCRIPTIONS='[]'
+append_subscription_status() {   # $1=id $2=label $3=url
+	local id label url info item
+	id="$1"; label="$2"; url="$3"; info="$CONF_DIR/sub.$1.info"; item=""
+	if [ -s "$info" ] && jq -e 'type == "object"' "$info" >/dev/null 2>&1; then
+		item=$(jq -cn --arg id "$id" --arg label "$label" --arg url "$url" --slurpfile saved "$info" \
+			'$saved[0] as $s | {id:$id,label:$label,url:$url,expire:(if ($s.expire|type)=="number" then $s.expire else null end),used:(($s.upload//0)+($s.download//0)),total:($s.total//0),updated:($s.updated//0)}' 2>/dev/null)
+	fi
+	[ -n "$item" ] || item=$(jq -cn --arg id "$id" --arg label "$label" --arg url "$url" \
+		'{id:$id,label:$label,url:$url,expire:null,used:0,total:0,updated:0}')
+	SUBSCRIPTIONS=$(printf '%s' "$SUBSCRIPTIONS" | jq -c --argjson item "$item" '. + [$item]' 2>/dev/null)
+	[ -n "$SUBSCRIPTIONS" ] || SUBSCRIPTIONS='[]'
+}
+if [ -n "$URL" ]; then append_subscription_status main 'Main subscription' "$URL"; fi
+extra_i=0
+for esub in $(uci -q get vpnpool.main.extra_sub); do
+	[ -n "$esub" ] || continue
+	append_subscription_status "extra_$extra_i" "Additional subscription #$((extra_i + 1))" "$esub"
+	extra_i=$((extra_i + 1))
+done
 AUTODOM=$(uci -q get vpnpool.routing.auto_domain | tr ' ' '\n' | jq -R . | jq -s 'map(select(length>0))' 2>/dev/null)
 [ -n "$AUTODOM" ] || AUTODOM='[]'
 COMMUNITIES=$(uci -q get vpnpool.routing.community | tr ' ' '\n' | jq -R . | jq -s 'map(select(length>0))' 2>/dev/null)
@@ -244,6 +267,7 @@ jq -n \
 	--arg mode "$MODE" \
 	--arg url "$URL" \
 	--argjson expire "$EXPIRE" \
+	--argjson subscriptions "$SUBSCRIPTIONS" \
 	--slurpfile nodes "$NODESF" \
 	--argjson savedinactive "$SAVEDINACTIVE" \
 	--argjson domains "$DOMAINS" \
@@ -307,6 +331,7 @@ jq -n \
 		active: $active,
 		auto_now: $auto_now,
 		subscription: { url: $url, expire: $expire, used: ($sup+$sdn), total: $stot },
+		subscriptions: $subscriptions,
 		nodes: ($nodes[0] // []),
 			saved_inactive: $savedinactive,
 			dead_nodes: $deadtags,

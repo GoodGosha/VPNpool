@@ -110,8 +110,34 @@ normalize() {   # $1 = raw body file -> decoded text on stdout
 	esac
 }
 
-fetch_best() {   # $1=url $2=primary(0/1) $3=outfile
-	url="$1"; primary="$2"; outfile="$3"
+write_subscription_info() {   # $1=id $2=url $3=header file
+	local sub_id url header uinfo expire upload download total updated tmp
+	sub_id="$1"; url="$2"; header="$3"
+	header=$(grep -i '^subscription-userinfo:' "$header" 2>/dev/null | head -1)
+	uinfo=${header#*:}
+	expire=$(printf '%s' "$uinfo" | grep -o 'expire=[0-9]*' | head -1 | cut -d= -f2)
+	upload=$(printf '%s' "$uinfo" | grep -o 'upload=[0-9]*' | head -1 | cut -d= -f2)
+	download=$(printf '%s' "$uinfo" | grep -o 'download=[0-9]*' | head -1 | cut -d= -f2)
+	total=$(printf '%s' "$uinfo" | grep -o 'total=[0-9]*' | head -1 | cut -d= -f2)
+	case "$expire" in (*[!0-9]*|"") expire=null ;; esac
+	case "$upload" in (*[!0-9]*|"") upload=0 ;; esac
+	case "$download" in (*[!0-9]*|"") download=0 ;; esac
+	case "$total" in (*[!0-9]*|"") total=0 ;; esac
+	updated=$(date +%s)
+	tmp="$CONF_DIR/.sub.$sub_id.info.tmp"
+	jq -n --arg id "$sub_id" --arg url "$url" --argjson expire "$expire" \
+		--argjson upload "$upload" --argjson download "$download" --argjson total "$total" \
+		--argjson updated "$updated" \
+		'{id:$id,url:$url,expire:$expire,upload:$upload,download:$download,total:$total,updated:$updated}' > "$tmp" \
+		&& mv "$tmp" "$CONF_DIR/sub.$sub_id.info"
+	if [ "$sub_id" = "main" ]; then
+		echo "$upload $download $total" > "$CONF_DIR/sub.usage"
+		if [ "$expire" != null ]; then echo "$expire" > "$CONF_DIR/sub.expire"; else rm -f "$CONF_DIR/sub.expire"; fi
+	fi
+}
+
+fetch_best() {   # $1=url $2=outfile $3=subscription id
+	url="$1"; outfile="$2"; sub_id="$3"
 	best=-1; bestua=""
 	try_user_agent() {  # $1=UA; configured headers intentionally omit -A
 		local ua="$1" h
@@ -144,12 +170,7 @@ fetch_best() {   # $1=url $2=primary(0/1) $3=outfile
 		[ -n "$cnt" ] || cnt=0
 		if [ "$cnt" -gt "$best" ]; then
 			best="$cnt"; bestua="${ua:-configured headers}"; cp "$SB_DATA/n.tmp" "$outfile"
-			if [ "$primary" = "1" ]; then
-				UINFO=$(grep -i '^subscription-userinfo:' "$SB_DATA/h.tmp" 2>/dev/null | head -1); EXP=$(echo "$UINFO" | grep -o 'expire=[0-9]*' | head -1 | cut -d= -f2)
-					UP=$(echo "$UINFO" | grep -o 'upload=[0-9]*' | head -1 | cut -d= -f2); DN=$(echo "$UINFO" | grep -o 'download=[0-9]*' | head -1 | cut -d= -f2); TOT=$(echo "$UINFO" | grep -o 'total=[0-9]*' | head -1 | cut -d= -f2)
-					[ -n "$TOT" ] && [ "$TOT" -gt 0 ] 2>/dev/null && echo "${UP:-0} ${DN:-0} ${TOT}" > "$CONF_DIR/sub.usage"
-				[ -n "$EXP" ] && echo "$EXP" > "$CONF_DIR/sub.expire"
-			fi
+			write_subscription_info "$sub_id" "$url" "$SB_DATA/h.tmp"
 		fi
 		[ "$cnt" -ge 1 ]
 	}
@@ -172,17 +193,19 @@ fetch_best() {   # $1=url $2=primary(0/1) $3=outfile
 rm -rf "$SRCDIR"; mkdir -p "$SRCDIR"
 n=0; ok=0
 if [ -n "$SUB_URL" ]; then
-	fetch_best "$SUB_URL" 1 "$SRCDIR/$(printf '%03d' "$n").raw" && ok=1
+	fetch_best "$SUB_URL" "$SRCDIR/$(printf '%03d' "$n").raw" main && ok=1
 	n=$((n + 1))
 fi
 
 # Extra FULL subscriptions (uci list extra_sub): bulk-merged into the pool like the
-# primary, each into its own NNN.raw (build.sh merges every *.raw). Quota/expiry are
-# only taken from the PRIMARY subscription (primary=0 here). vless:// links have no
+# primary, each into its own NNN.raw (build.sh merges every *.raw). Each subscription's
+# quota/expiry is saved separately. vless:// links have no
 # spaces, so a plain `uci get` list read is safe.
+extra_n=0
 for esub in $(uci -q get vpnpool.main.extra_sub); do
 	[ -n "$esub" ] || continue
-	fetch_best "$esub" 0 "$SRCDIR/$(printf '%03d' "$n").raw" && ok=1
+	fetch_best "$esub" "$SRCDIR/$(printf '%03d' "$n").raw" "extra_$extra_n" && ok=1
+	extra_n=$((extra_n + 1))
 	n=$((n + 1))
 done
 # NOTE: extra `source` URLs are NOT bulk-merged anymore — a public list can carry
